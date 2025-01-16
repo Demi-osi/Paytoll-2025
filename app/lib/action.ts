@@ -33,7 +33,7 @@ const isoDate = new Date(southAfricaTime).toISOString();
 
 const vehicleFormSchema = z.object({
   licensePlate: z.string(),
-  user: z.string(),
+  user: z.string().optional(),
   tollIncurred: z.coerce.number(),
   tolls: z.record(z.string()).refine(
     (tolls) => Object.keys(tolls).length > 0, 
@@ -109,12 +109,17 @@ const dummy_tolls = {
  
 export async function createVehicles(formData: FormData) {
 
-  console.log(session?.user?.id)
+  //console.log(session?.user?.id)
+
+  const session = await auth();
   
-    const { licensePlate, user, tollIncurred, tolls, make, model, year } = vehicleFormSchema.parse({
+  if (!session?.user?.id) {
+    throw new Error('User not authenticated');
+  }
+  
+    const { licensePlate, tollIncurred, tolls, make, model, year } = vehicleFormSchema.parse({
         licensePlate: formData.get('licensePlate'),
         tollIncurred: 244,
-        user: session?.user?.id,
         tolls: dummy_tolls,
         make: formData.get('Make'),
         model: formData.get('Model'),
@@ -128,7 +133,7 @@ export async function createVehicles(formData: FormData) {
       const vehicle = await prisma.vehicles.create({
         data: {
           license_plate: licensePlate,
-          user_id: user,
+          user_id: session.user.id,
           make,
           model,
           year,

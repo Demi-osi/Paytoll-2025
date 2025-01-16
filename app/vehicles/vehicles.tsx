@@ -124,8 +124,12 @@ export default function VehiclesPage() {
         alert("Vehicle added but failed to fetch updated list.");
       }
     } catch (error) {
+      if (error instanceof Error) {
+        alert(error.message); // This will show "User not authenticated" if that's the issue
+      } else {
+        alert("An error occurred while adding the vehicle.");
+      }
       console.error("Error adding vehicle:", error);
-      alert("An error occurred while adding the vehicle.");
     }
   };
   
