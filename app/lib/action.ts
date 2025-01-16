@@ -234,6 +234,122 @@ export async function createCards(formData: FormData) {
   }
 
   export async function handlePayToll(formData: FormData) {
+    const session = await auth();
+    
+    if (!session?.user?.id) {
+      throw new Error('User not authenticated');
+    }
+  
+    // Extract and validate form data
+    const id = parseFloat(formData.get('id') as string);
+    const name = formData.get('name') as string;
+    const amount = parseFloat(formData.get('amount') as string);
+    const date = formData.get('date') as string;
+    const location = formData.get('location') as string;
+    const vehicle_id = formData.get('selectedVehicleId') as string;
+  
+    if (isNaN(id) || isNaN(amount) || !vehicle_id) {
+      throw new Error('Invalid toll data');
+    }
+  
+    try {
+      // Use a transaction to ensure all database operations succeed or fail together
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Get and verify user balance
+        const userData = await tx.users.findUnique({
+          where: { id: session.user.id },
+          select: { balance: true },
+        });
+  
+        if (!userData?.balance) {
+          throw new Error('User balance not found');
+        }
+  
+        const userBalance = userData.balance.toNumber();
+        
+        if (userBalance < amount) {
+          throw new Error('Insufficient balance');
+        }
+  
+        // 2. Get and verify vehicle data
+        const selectedVehicle = await tx.vehicles.findUnique({
+          where: { id: vehicle_id },
+          select: { tolls: true, toll_balance: true, license_plate: true },
+        });
+  
+        if (!selectedVehicle) {
+          throw new Error('Vehicle not found');
+        }
+  
+        const tolls = selectedVehicle.tolls as Record<number, string>;
+        const tollToRemove = tolls[id];
+  
+        if (!tollToRemove) {
+          throw new Error('Toll not found');
+        }
+  
+        // Convert toll_balance to number, handling null/undefined cases
+        const currentTollBalance = selectedVehicle.toll_balance 
+          ? selectedVehicle.toll_balance.toNumber() 
+          : 0;
+  
+        // 3. Update user balance
+        await tx.users.update({
+          where: { id: session.user.id },
+          data: { 
+            balance: userBalance - amount 
+          },
+        });
+  
+        // 4. Update vehicle tolls and balance
+        const updatedTolls = { ...tolls };
+        delete updatedTolls[id];
+        
+        await tx.vehicles.update({
+          where: { id: vehicle_id },
+          data: {
+            tolls: updatedTolls,
+            toll_balance: currentTollBalance - amount,
+          },
+        });
+  
+        // 5. Create transaction record
+        const [pureDate] = date.split('T');
+        await tx.transactions.create({
+          data: {
+            amount: amount,
+            location: location,
+            toll_name: name,
+            license_plate: selectedVehicle.license_plate,
+            toll_incurred_at: new Date(pureDate),
+            date_paid: new Date(),
+            vehicles: {
+              connect: { id: vehicle_id },
+            },
+          },
+        });
+  
+        // Return updated balances for verification
+        return {
+          newUserBalance: userBalance - amount,
+          newTollBalance: currentTollBalance - amount,
+        };
+      });
+  
+      return { 
+        success: true, 
+        ...result 
+      };
+  
+    } catch (error) {
+      console.error('Transaction failed:', error);
+      throw new Error(error instanceof Error ? error.message : 'Transaction failed');
+    }
+  }
+
+  /*export async function handlePayToll(formData: FormData) {
+    const session = await auth();
+
     if (!session || !session.user || !session.user.id) {
       return new Response(JSON.stringify({ message: 'User not authenticated.' }), { status: 401 });
     }
@@ -312,7 +428,7 @@ export async function createCards(formData: FormData) {
       },
     });
     const [pureDate] = date.split('T'); 
-    console.log(pureDate)
+    //console.log(pureDate)
     await prisma.transactions.create({
       data: {
         amount: amount,
@@ -330,67 +446,11 @@ export async function createCards(formData: FormData) {
     });
     
 
-    return {
+    return { success: true 
       //message: `Toll paid successfully: ${tollToRemove.split('/')[0]} - Amount: R${amount.toFixed(2)}`
     };
-  
-  
-    /*if (!name || isNaN(amount) || !date || !location || !vehicle_id) {
-      return new Response(JSON.stringify({ message: 'Invalid toll data.' }), { status: 400 });
-    }
-  
-    if (typeof vehicle_id !== 'string') {
-      return new Response(JSON.stringify({ message: 'Invalid vehicle ID.' }), { status: 400 });
-    }
-  
-    // Check if the user's balance is sufficient
-    if (userData.balance < amount) {
-      return new Response(JSON.stringify({ message: 'Insufficient balance.' }), { status: 400 });
-    }
-  
-    // Deduct the toll amount from the user's balance
-    const updatedBalance = session?.user['balance'] - amount;
-  
-    await prisma.users.update({
-      where: { id: userData.id },
-      data: { balance: updatedBalance },
-    });
-  
-    // You may need to fetch the selected vehicle here, depending on your data structure
-    const selectedVehicle = await prisma.vehicles.findUnique({
-      where: { id: vehicle_id },
-    });
-  
-    if (!selectedVehicle) {
-      return new Response(JSON.stringify({ message: 'Vehicle not found.' }), { status: 404 });
-    }
-  
-    // Convert the tolls to a plain string array if it's not already
-    const currentTolls = Array.isArray(selectedVehicle.tolls) 
-      ? selectedVehicle.tolls 
-      : JSON.parse(selectedVehicle.tolls as string);
-  
-    // Remove the specific toll from the array
-    const updatedTolls = currentTolls.filter(
-      (toll: string) => toll !== `${name}/${amount}/${date}/${location}`
-    );
-  
-    const tollBalance: number = selectedVehicle.toll_balance 
-      ? Number(selectedVehicle.toll_balance) 
-      : 0;
-    const updatedTollBalance = tollBalance - amount;
-  
-    // Update the vehicle's tolls and balance
-    await prisma.vehicles.update({
-      where: { id: selectedVehicle.id },
-      data: {
-        tolls: updatedTolls,
-        toll_balance: updatedTollBalance,
-      },
-    });*/
-  
-    //return new Response(JSON.stringify({ message: `Toll paid successfully: ${name} - Amount: R${amount.toFixed(2)}` }));
-  }
+
+  }*/
 
   export async function authenticate(
     prevState: string | undefined,

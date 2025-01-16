@@ -47,11 +47,11 @@ export default function VehiclesPage() {
                 return {
                   id: item.id,
                   licensePlate: item.license_plate,
-                  tollIncurred: isNaN(Number(item.toll_balance)) ? 0 : Number(item.toll_balance),
-                  tolls: item.tolls,
+                  tollIncurred: parseFloat(item.toll_balance) || 0,
+                  tolls: typeof item.tolls === 'object' ? item.tolls : {},
                   make: item.make,
                   model: item.model,
-                  year: item.year
+                  year: parseInt(item.year)
                 };
               });
               
