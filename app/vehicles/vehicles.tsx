@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Vehicle } from "@/app/lib/definitions";
 import { createVehicles, handlePayToll } from "@/app/lib/action";
-//import userData from "../dummy_user";
 import { getSession, useSession } from "next-auth/react";
 import { Session, User } from "next-auth";
 
